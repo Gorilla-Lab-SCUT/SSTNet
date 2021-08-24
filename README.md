@@ -6,7 +6,7 @@ by Zhihao Liang, Zhihao Li, Songcen Xu, Mingkui Tan, Kui Jia*. (\*) Correspondin
 
 ## Results on ScanNet Benchmark
 Rank 1st on the ScanNet benchmark
-![benchmark](doc/benchmark.png)
+![benchmark](docs/benchmark.png)
 
 Code will be released soon
 
