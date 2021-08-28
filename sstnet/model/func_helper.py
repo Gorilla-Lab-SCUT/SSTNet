@@ -156,52 +156,51 @@ def get_fusion_property(properties: torch.Tensor,
     return properties
 
 
-def align_overseg_label(labels: torch.Tensor,
-                        overseg: torch.Tensor,
-                        num_label: int=20,
-                        ignore_label: int=-100):
-    r"""refine semantic segmentation by overseg
+def align_superpoint_label(labels: torch.Tensor,
+                           superpoint: torch.Tensor,
+                           num_label: int=20,
+                           ignore_label: int=-100):
+    r"""refine semantic segmentation by superpoint
 
     Args:
         labels (torch.Tensor, [N]): semantic label of points
-        overseg: (torch.Tensor, [N]): overseg cluster id of points
+        superpoint: (torch.Tensor, [N]): superpoint cluster id of points
 
     Returns:
-        label: (torch.Tensor, [num_overseg]): overseg's label
-        label_scores: (torch.Tensor, [num_overseg, num_label + 1]): overseg's label scores
+        label: (torch.Tensor, [num_superpoint]): superpoint's label
+        label_scores: (torch.Tensor, [num_superpoint, num_label + 1]): superpoint's label scores
     """
-    row = overseg.cpu().numpy() # overseg has been compression
-    # _, row = np.unique(overseg.cpu().numpy(), return_inverse=True)
+    row = superpoint.cpu().numpy() # superpoint has been compression
     col = labels.cpu().numpy()
     col[col < 0] = num_label
-    data = np.ones(len(overseg))
+    data = np.ones(len(superpoint))
     shape = (len(np.unique(row)), num_label + 1)
-    label_map = coo_matrix((data, (row, col)), shape=shape).toarray()  # [num_overseg, num_label + 1]
-    label = torch.Tensor(np.argmax(label_map, axis=1)).long().to(labels.device)  # [num_overseg]
+    label_map = coo_matrix((data, (row, col)), shape=shape).toarray()  # [num_superpoint, num_label + 1]
+    label = torch.Tensor(np.argmax(label_map, axis=1)).long().to(labels.device)  # [num_superpoint]
     label[label == num_label] = ignore_label # ignore_label
-    label_scores = torch.Tensor(label_map / label_map.sum(axis=1)[:, None]).to(labels.device) # [num_overseg, num_label + 1]
+    label_scores = torch.Tensor(label_map / label_map.sum(axis=1)[:, None]).to(labels.device) # [num_superpoint, num_label + 1]
 
     return label, label_scores
 
 
 def refine_semantic_segmentation(semantic_preds: torch.Tensor,
-                                 overseg: torch.Tensor,
+                                 superpoint: torch.Tensor,
                                  num_semantic: int=20):
-    r"""refine semantic segmentation by overseg
+    r"""refine semantic segmentation by superpoint
 
     Args:
         semantic_preds (torch.Tensor, [N]): semantic label of points
-        overseg: (torch.Tensor, [N]): overseg cluster id of points
+        superpoint: (torch.Tensor, [N]): superpoint cluster id of points
 
     Returns:
         replace_semantic: (torch.Tensor, [N]): refine semantic label of points
     """
-    _, row = np.unique(overseg.cpu().numpy(), return_inverse=True)
+    _, row = np.unique(superpoint.cpu().numpy(), return_inverse=True)
     col = semantic_preds.cpu().numpy()
-    data = np.ones(len(overseg))
+    data = np.ones(len(superpoint))
     shape = (len(np.unique(row)), num_semantic)
-    semantic_map = coo_matrix((data, (row, col)), shape=shape).toarray()  # [num_overseg, num_semantic]
-    semantic_map = torch.Tensor(np.argmax(semantic_map, axis=1)).to(semantic_preds.device) # [num_overseg]
+    semantic_map = coo_matrix((data, (row, col)), shape=shape).toarray()  # [num_superpoint, num_semantic]
+    semantic_map = torch.Tensor(np.argmax(semantic_map, axis=1)).to(semantic_preds.device) # [num_superpoint]
     replace_semantic = semantic_map[torch.Tensor(row).to(semantic_preds.device).long()]
 
     return replace_semantic
@@ -214,14 +213,12 @@ def traversal_cluster(tree: Tree,
     get the cluster result by top-down bfs traversing hierachical tree
 
     Args:
-        overseg (torch.Tensor, [N']): [description]
         tree (treelib.Tree): [description]
         nodes (torch.Tensor, [num_nodes]): [description]
         scores (torch.Tensor, [num_nodes * 2]): [description]
-        threshold (float): [description]
 
     Returns:
-        List[List[List[int]], List[int]], list of cluster overseg id and list of node id
+        List[List[List[int]], List[int]], list of cluster superpoint id and list of node id
     """
     queue = [tree.root]
     
@@ -264,8 +261,8 @@ def traversal_cluster(tree: Tree,
     return cluster_list, node_id_list, refine_labels
 
 
-def build_overseg_graph(tree: Tree,
-                        node_id_list: List[List[int]]):
+def build_superpoint_graph(tree: Tree,
+                           node_id_list: List[List[int]]):
     num_leaves = len(tree.leaves(tree.root))
     num_graph_nodes = num_leaves + len(node_id_list)
     # self connection
@@ -288,22 +285,22 @@ def build_overseg_graph(tree: Tree,
     return adjancy_matrix
 
 
-def get_proposals_idx(overseg: torch.Tensor, cluster_list: List[List[int]]):
+def get_proposals_idx(superpoint: torch.Tensor, cluster_list: List[List[int]]):
     r"""
-    get proposals idx(mask) from overseg clusters
+    get proposals idx(mask) from superpoint clusters
 
     Args:
-        overseg (torch.Tensor): overseg ids
+        superpoint (torch.Tensor): superpoint ids
         cluster_list (List[List[int]]): List of cluster ids
 
     Returns:
         proposals_idx
     """
-    overseg_np = overseg.cpu().numpy()
+    superpoint_np = superpoint.cpu().numpy()
     proposals_idx_list = []
     cluster_id = 0
     for cluster in cluster_list:
-        proposals_idx = np.where(np.isin(overseg_np, cluster))[0]
+        proposals_idx = np.where(np.isin(superpoint_np, cluster))[0]
         clusters_id = np.ones_like(proposals_idx) * cluster_id
         proposals_idx = np.stack([clusters_id, proposals_idx], axis=1)
         if len(proposals_idx) < 50:

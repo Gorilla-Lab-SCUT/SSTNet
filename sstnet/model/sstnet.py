@@ -87,8 +87,8 @@ class SSTNet(nn.Module):
 
         fusion_channel = 2 * (media + classes + 3 * 2)
         refine_channel = media + classes + 3 * 2
-        #### overseg, fusion and refine branch
-        self.overseg_linear = gn.MultiFC(
+        #### superpoint, fusion and refine branch
+        self.superpoint_linear = gn.MultiFC(
             nodes = [media, media, media],
             drop_last = False
         )
@@ -110,11 +110,7 @@ class SSTNet(nn.Module):
 
         self.apply(self.set_bn_init)
 
-        # #### fix parameter
-        # self.module_map = {"input_conv": self.input_conv, "unet": self.unet, "output_layer": self.output_layer,
-        #                    "linear": self.linear, "offset": self.offset, "offset_linear": self.offset_linear,
-        #                    "score_unet": self.score_unet, "score_outputlayer": self.score_outputlayer, "score_linear": self.score_linear,
-        #                    "overseg_linear": self.overseg_linear, "fusion_linear": self.fusion_linear, "refine_gcn": self.refine_gcn}
+        #### fix parameter
         for module in self.fix_module:
             module = getattr(self, module)
             module.eval()
@@ -195,7 +191,7 @@ class SSTNet(nn.Module):
 
 
     def hierarchical_fusion_step(self,
-                                 overseg: torch.Tensor,
+                                 superpoint: torch.Tensor,
                                  batch_idxs: torch.Tensor,
                                  coords: torch.Tensor,
                                  features: torch.Tensor,
@@ -211,7 +207,7 @@ class SSTNet(nn.Module):
         to get all fusion pair and judge whether fusion or not
 
         Args:
-            overseg (torch.Tensor, [N]): overseg id of points
+            superpoint (torch.Tensor, [N]): superpoint id of points
             batch_idxs (torch.Tensor, [N]): batch idx of points
             coords (torch.Tensor, [N, 3]): coordinates of points
             features (torch.Tensor, [N, C]): features of points
@@ -223,14 +219,13 @@ class SSTNet(nn.Module):
             ret (Optional[dict], optional): dict to save results. Defaults to None.
             mode (str, optional): train or test mode. Defaults to "train".
         """
-        overseg_origin = overseg
         timer = gorilla.Timer()
-        # count the overseg num
+        # count the superpoint num
         shifted = coords + pt_offsets
         
         semantic_scores = F.softmax(semantic_scores, dim=-1) # [N, 20]
         semantic_preds = semantic_scores.max(1)[1]  # [N], long
-        semantic_preds = refine_semantic_segmentation(semantic_preds, overseg)
+        semantic_preds = refine_semantic_segmentation(semantic_preds, superpoint)
         
         # get point-wise affinity
         semantic_weight, shifted_weight = self.affinity_weight
@@ -243,7 +238,7 @@ class SSTNet(nn.Module):
         
         # filter out according to semantic prediction labels
         filter_ids = torch.nonzero(semantic_preds > 1).view(-1)
-        _, overseg = torch.unique(overseg[filter_ids], return_inverse=True)
+        _, superpoint = torch.unique(superpoint[filter_ids], return_inverse=True)
         coords = coords[filter_ids] # [N', 3]
         features = features[filter_ids] # [N', C]
         affinity = affinity_origin[filter_ids] # [N', C']
@@ -252,47 +247,32 @@ class SSTNet(nn.Module):
         batch_idxs = batch_idxs[filter_ids] # [N']
         shifted = shifted[filter_ids] # [N', 3]
 
-        # get the overseg-wise input
-        overseg_affinity = scatter_mean(affinity, overseg, dim=0) # [num_overseg, C]
-        overseg_batch_idxs = scatter_mean(batch_idxs, overseg, dim=0).int() # [num_overseg]
-        overseg_centers = scatter_mean(coords, overseg, dim=0) # [num_overseg, 3]
-        overseg_shifted = scatter_mean(shifted, overseg, dim=0) # [num_overseg, 3]
-        overseg_features = scatter_mean(features, overseg, dim=0) # [num_overseg, C]
-        overseg_features = self.overseg_linear(overseg_features) # [num_overseg, C]
-        overseg_append_feaures = scatter_mean(append_feaures, overseg, dim=0) # [num_overseg, C']
-        overseg_count = torch.bincount(overseg) # [num_overseg]
+        # get the superpoint-wise input
+        superpoint_affinity = scatter_mean(affinity, superpoint, dim=0) # [num_superpoint, C]
+        superpoint_batch_idxs = scatter_mean(batch_idxs, superpoint, dim=0).int() # [num_superpoint]
+        superpoint_centers = scatter_mean(coords, superpoint, dim=0) # [num_superpoint, 3]
+        superpoint_features = scatter_mean(features, superpoint, dim=0) # [num_superpoint, C]
+        superpoint_features = self.superpoint_linear(superpoint_features) # [num_superpoint, C]
+        superpoint_append_feaures = scatter_mean(append_feaures, superpoint, dim=0) # [num_superpoint, C']
+        superpoint_count = torch.bincount(superpoint) # [num_superpoint]
 
         if mode == "train":
-            instance_labels_origin = instance_labels
             instance_labels = instance_labels[filter_ids] # [N']
             num_inst = int(instance_labels.max() + 1)
-            _, overseg_soft_inst_label = align_overseg_label(instance_labels, overseg, num_inst) # [num_overseg], [num_overseg, num_inst + 1]
-            
-            # # calculate affinity loss
-            # valid = (instance_labels_origin != -100)
-            # _, overseg_valid = torch.unique(overseg_origin[valid], return_inverse=True)
-            # _, instance_labels_filter = torch.unique(instance_labels_origin[valid], return_inverse=True)
-            # num_inst = int(instance_labels_filter.max() + 1)
-            # overseg_inst_id, _ = align_overseg_label(instance_labels_filter, overseg_valid, num_inst) # [num_overseg]
-            # affinity = affinity_origin[valid]
-            # instance_affinity = scatter_mean(affinity, instance_labels_filter, dim=0) # [num_inst, C']
-            # overseg_pt_affinity = scatter_mean(affinity, overseg_valid, dim=0) # [num_overseg, C']
-            # overseg_gt_affinity = instance_affinity[overseg_inst_id] # [num_overseg, C']
-            # affinity_loss = ((overseg_pt_affinity - overseg_gt_affinity)**2).sum()
-            # ret["affinity_loss"] = affinity_loss
+            _, superpoint_soft_inst_label = align_superpoint_label(instance_labels, superpoint, num_inst) # [num_superpoint], [num_superpoint, num_inst + 1]
         else:
-            overseg_soft_inst_label = overseg_features
+            superpoint_soft_inst_label = superpoint_features
 
-        overseg_features = torch.cat([overseg_features, overseg_append_feaures], dim=1) # [num_overseg, C + C']
+        superpoint_features = torch.cat([superpoint_features, superpoint_append_feaures], dim=1) # [num_superpoint, C + C']
 
         # build the hierarchical tree
         hierarchical_tree_list, tree_list, fusion_features_list, fusion_labels_list, nodes_list = build_hierarchical_tree(
-            overseg_affinity,
-            overseg_features,
-            overseg_centers,
-            overseg_count,
-            overseg_batch_idxs,
-            overseg_soft_inst_label,
+            superpoint_affinity,
+            superpoint_features,
+            superpoint_centers,
+            superpoint_count,
+            superpoint_batch_idxs,
+            superpoint_soft_inst_label,
             mode=mode)
 
         batch_idx_list = []
@@ -332,7 +312,7 @@ class SSTNet(nn.Module):
                 ret["empty_flag"] = empty_flag
 
                 if self.with_refine and not empty_flag:
-                    batch_adjancy_matrix = build_overseg_graph(tree, batch_node_ids)
+                    batch_adjancy_matrix = build_superpoint_graph(tree, batch_node_ids)
                     batch_adjancy_matrix = batch_adjancy_matrix.cuda()
                     num_leaves = len(tree.leaves(tree.root))
                     input_features = [tree.get_node(i).data.feature for i in range(num_leaves)]
@@ -364,8 +344,8 @@ class SSTNet(nn.Module):
 
                 if not empty_flag:
                     # get proposals
-                    # convert overseg id cluster into mask proposals
-                    proposals_idx = get_proposals_idx(overseg, batch_cluster_list)
+                    # convert superpoint id cluster into mask proposals
+                    proposals_idx = get_proposals_idx(superpoint, batch_cluster_list)
                     proposals_idx[:, 1] = filter_ids.cpu()[proposals_idx[:, 1]]
                     proposals_idx[:, 0] += proposals_idx_bias
                     proposals_idx_bias = (proposals_idx[:, 0].max() + 1)
@@ -408,14 +388,10 @@ class SSTNet(nn.Module):
         output = self.output_layer(output)
         output_feats = output.features[input_map.long()] # [N, m]
 
-        overseg = extra_data["overseg"] # [N]
+        superpoint = extra_data["superpoint"] # [N]
 
         #### semantic segmentation
         semantic_scores = self.linear(output_feats)   # [N, nClass], float
-
-        # semantic_preds = semantic_scores.max(1)[1]  # [N], long
-        # semantic_preds = refine_semantic_segmentation(semantic_preds, overseg)
-        # semantic_scores = F.one_hot(semantic_preds.long(), num_classes=20).float()
 
         ret["semantic_scores"] = semantic_scores
 
@@ -424,7 +400,7 @@ class SSTNet(nn.Module):
         pt_offsets = self.offset_linear(pt_offsets_feats) # [N, 3], float32
         ret["pt_offsets"] = pt_offsets
 
-        # deal with overseg
+        # deal with superpoint
         batch_idxs = extra_data["batch_idxs"]
         scene_list = extra_data["scene_list"]
         instance_labels = None
@@ -437,7 +413,7 @@ class SSTNet(nn.Module):
         ret["empty_flag"] = False
         # hierarchical clustering and get proposal
         if fusion_flag and not semantic_only:
-            self.hierarchical_fusion_step(overseg,
+            self.hierarchical_fusion_step(superpoint,
                                           batch_idxs,
                                           coords,
                                           output_feats,

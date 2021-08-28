@@ -95,8 +95,8 @@ def do_train(model, cfg, logger):
             )  # [total_num_inst], int, cuda
 
             batch_offsets = batch["offsets"].cuda()  # [B + 1], int, cuda
-            overseg = batch["superpoint"].cuda()  # [N], long, cuda
-            _, overseg = torch.unique(overseg, return_inverse=True)  # [N], long, cuda
+            superpoint = batch["superpoint"].cuda()  # [N], long, cuda
+            _, superpoint = torch.unique(superpoint, return_inverse=True)  # [N], long, cuda
 
             fusion_epochs = cfg.model.fusion_epochs
             score_epochs = cfg.model.score_epochs
@@ -108,7 +108,7 @@ def do_train(model, cfg, logger):
 
             extra_data = {
                 "batch_idxs": coords[:, 0].int(),
-                "overseg": overseg,
+                "superpoint": superpoint,
                 "locs_offset": locs_offset,
                 "scene_list": scene_list,
                 "instance_labels": instance_labels,
@@ -147,7 +147,7 @@ def do_train(model, cfg, logger):
                                       instance_labels,
                                       instance_pointnum)
 
-            loss_inp["overseg"] = overseg
+            loss_inp["superpoint"] = superpoint
             loss_inp["empty_flag"] = ret["empty_flag"] # avoid stack error
 
             if fusion_flag:

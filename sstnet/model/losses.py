@@ -79,11 +79,11 @@ class SSTLoss(nn.Module):
         loss_out["offset_dir_loss"] = (offset_dir_loss, valid.sum())
 
         empty_flag = loss_inp["empty_flag"]
-        """overseg clustering loss"""
+        """superpoint clustering loss"""
         if fusion_flag:
             fusion_scores, fusion_labels = loss_inp["fusion"]
-            # fusion_scores: [num_overseg - 1], float
-            # fusion_labels: [num_overseg - 1], float
+            # fusion_scores: [num_superpoint - 1], float
+            # fusion_labels: [num_superpoint - 1], float
             fusion_loss = F.binary_cross_entropy_with_logits(fusion_scores, fusion_labels)
             fusion_count = fusion_labels.shape[0]
             loss_out["fusion_loss"] = (fusion_loss, fusion_count)
