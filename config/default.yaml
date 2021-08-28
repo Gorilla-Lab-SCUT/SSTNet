@@ -1,0 +1,81 @@
+task: train  # train, test
+seed: 123
+
+data:
+  ignore_label: -100
+  mode: 4 # 4=mean
+
+  # train mode
+  epochs: 512
+  save_freq: 8  # also eval_freq
+
+  # test mode
+  test_seed: 567
+  test_workers: 8 # data loader workers
+
+  TEST_NMS_THRESH: 0.3
+  TEST_SCORE_THRESH: 0.00
+  TEST_NPOINT_THRESH: 100
+
+  split: val
+  test_epoch: 512
+
+dataloader:
+  batch_size: 4
+  num_workers: 8 # data loader workers
+
+dataset:
+  type: ScanNetV2Inst
+  data_root: data/scannetv2
+  full_scale: [128, 512]
+  scale: 50   # voxel_size = 1 / scale, scale 50(2cm)
+  max_npoint: 250000
+  task: train
+  with_elastic: False
+  with_superpoint: True
+
+model:
+  type: SSTNet
+  input_channel: 3
+  use_coords: True
+  blocks: 5
+  block_reps: 2
+  media: 32 # 16 or 32
+  classes: 20
+  score_scale: 50 # the minimal voxel size is 2cm
+  score_fullscale: 14
+  score_mode: 4 # mean
+  detach: True
+  affinity_weight: [1.0, 1.0]
+  with_refine: False
+  fusion_epochs: 128
+  score_epochs: 160
+  fix_module: []
+
+loss:
+  type: SSTLoss
+  ignore_label: -100
+  fusion_epochs: 128
+  score_epochs: 160
+  bg_thresh: 0.25
+  fg_thresh: 0.75
+  semantic_dice: True
+  loss_weight: [1.0, 1.0, 1.0, 1.0, 1.0] # semantic_loss, offset_norm_loss, offset_dir_loss, score_loss
+
+# optimizer
+optimizer:
+  lr: 0.001
+  # type: Adam
+  type: AdamW
+  weight_decay: 0.0001
+  # amsgrad: False
+
+# lr_scheduler
+lr_scheduler:
+  type: PolyLR
+  # max_iters: 153600
+  # max_iters: 614912
+  max_iters: 512
+  power: 0.9
+  constant_ending: 0.0
+
