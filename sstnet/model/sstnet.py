@@ -13,7 +13,6 @@ import gorilla.nn as gn
 import gorilla3d.nn as g3n
 
 from .func_helper import *
-from ..util import get_batch_offsets
 
 @gorilla.MODELS.register_module()
 class SSTNet(nn.Module):
@@ -467,4 +466,16 @@ class SSTNet(nn.Module):
             ret["proposal_scores"] = proposal_scores
 
         return ret
+
+
+def get_batch_offsets(batch_idxs, bs):
+    """
+    :param batch_idxs: (N), int
+    :param bs: int
+    :return: batch_offsets: (bs + 1)
+    """
+    batch_idxs_np = batch_idxs.cpu().numpy()
+    batch_offsets = np.append(np.searchsorted(batch_idxs_np, range(bs)), len(batch_idxs_np))
+    batch_offsets = torch.Tensor(batch_offsets).int().to(batch_idxs.device)
+    return batch_offsets
 

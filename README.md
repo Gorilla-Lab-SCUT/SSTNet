@@ -16,10 +16,12 @@ Instance segmentation in 3D scenes is fundamental in many applications of scene 
 ### Requirements
 * Python 3.8.5
 * Pytorch 1.7.1
+* torchvision 0.8.2
 * CUDA 11.1  
+* requirements.txt
 
 ### SparseConv
-For the SparseConv, please refer [PointGroup](https://github.com/dvlab-research/PointGroup) to install.
+For the SparseConv, please refer [PointGroup's spconv](https://github.com/llijiang/spconv) to install.
 
 ### Extension
 This project is based on our Gorilla-Lab deep learning toolkit - `gorilla-core` and 3D toolkit `gorilla-3d`.
@@ -47,6 +49,7 @@ Otherwise, this project also need other extension, we use the `pointgroup_ops` t
 
 - For `pointgroup_ops`, we modified the package from `PointGroup` to let its function calls get rid of the dependence on absolute paths. You can install it by running:
     ```sh
+    conda install -c bioconda google-sparsehash 
     cd $PROJECT_ROOT$
     cd sstnet/lib/pointgroup_ops
     python setup.py develop

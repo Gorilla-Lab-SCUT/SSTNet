@@ -1,12 +1,12 @@
 # Copyright (c) Gorilla-Lab. All rights reserved.
-import os
 import glob
+import os.path as osp
 
 import torch
-import spconv
-
 import gorilla
 import gorilla3d
+import spconv
+
 import sstnet
 import pointgroup_ops
 
@@ -51,8 +51,12 @@ def do_train(model, cfg, logger):
         iter = meta.get("iter", iter) + 1
     
     # initialize train dataset
-    train_dataset = sstnet.ScanNetV2TrainVal(cfg)
-    train_dataloader = train_dataset.dataloader(True)
+    train_dataset = gorilla.build_dataset(cfg.dataset)
+    train_dataloader = gorilla.build_dataloader(train_dataset,
+                                                cfg.dataloader,
+                                                shuffle=True,
+                                                pin_memory=True,
+                                                drop_last=True)
 
     # initialize tensorboard (Optional) TODO: integrating the tensorborad manager
     writer = gorilla.TensorBoardWriter(cfg.log_dir) # tensorboard writer
@@ -102,23 +106,24 @@ def do_train(model, cfg, logger):
             scene_list = batch["scene_list"]
             spatial_shape = batch["spatial_shape"]
 
-            extra_data = {"batch_idxs": coords[:, 0].int(),
-                        "overseg": overseg,
-                        "locs_offset": locs_offset,
-                        "scene_list": scene_list,
-                        "instance_labels": instance_labels,
-                        "instance_pointnum": instance_pointnum
-                        }
+            extra_data = {
+                "batch_idxs": coords[:, 0].int(),
+                "overseg": overseg,
+                "locs_offset": locs_offset,
+                "scene_list": scene_list,
+                "instance_labels": instance_labels,
+                "instance_pointnum": instance_pointnum
+            }
 
             if cfg.model.use_coords:
                 feats = torch.cat((feats, coords_float), 1)
             voxel_feats = pointgroup_ops.voxelization(
-                feats, v2p_map, cfg.data.mode)  # [M, C], float, cuda
+                feats, v2p_map, cfg.data.mode)  # [M, C]
 
             input_ = spconv.SparseConvTensor(voxel_feats,
                                              voxel_coords.int(),
                                              spatial_shape,
-                                             cfg.data.batch_size)
+                                             cfg.dataloader.batch_size)
 
             ret = model(input_,
                         p2v_map,
@@ -209,7 +214,7 @@ def do_train(model, cfg, logger):
                 "iter": iter}
     
         # save checkpoint
-        checkpoint = os.path.join(cfg.log_dir, "epoch_{0:05d}.pth".format(epoch))
+        checkpoint = osp.join(cfg.log_dir, "epoch_{0:05d}.pth".format(epoch))
         if (epoch == fusion_epochs) or (epoch == fusion_epochs):
             gorilla.save_checkpoint(model=model,
                                     filename=checkpoint,
@@ -222,7 +227,7 @@ def do_train(model, cfg, logger):
                                     meta=meta)
         logger.info("Saving " + checkpoint)
         # save as latest checkpoint
-        latest_checkpoint = os.path.join(cfg.log_dir, "epoch_latest.pth")
+        latest_checkpoint = osp.join(cfg.log_dir, "epoch_latest.pth")
         gorilla.save_checkpoint(model=model,
                                 filename=latest_checkpoint,
                                 optimizer=optimizer,
@@ -235,14 +240,14 @@ def do_train(model, cfg, logger):
 def get_checkpoint(log_dir, epoch=0, checkpoint=""):
     if not checkpoint:
         if epoch > 0:
-            checkpoint = os.path.join(log_dir, "epoch_{0:05d}.pth".format(epoch))
-            assert os.path.isfile(checkpoint)
+            checkpoint = osp.join(log_dir, "epoch_{0:05d}.pth".format(epoch))
+            assert osp.isfile(checkpoint)
         else:
-            latest_checkpoint = glob.glob(os.path.join(log_dir, "*latest*.pth"))
+            latest_checkpoint = glob.glob(osp.join(log_dir, "*latest*.pth"))
             if len(latest_checkpoint) > 0:
                 checkpoint = latest_checkpoint[0]
             else:
-                checkpoint = sorted(glob.glob(os.path.join(log_dir, "*.pth")))
+                checkpoint = sorted(glob.glob(osp.join(log_dir, "*.pth")))
                 if len(checkpoint) > 0:
                     checkpoint = checkpoint[-1]
                     epoch = int(checkpoint.split("_")[-1].split(".")[0])
@@ -255,13 +260,13 @@ def main(args):
 
     # get logger file
     log_dir, logger = gorilla.collect_logger(
-        prefix=os.path.splitext(os.path.basename(args.config))[0])
+        prefix=osp.splitext(osp.basename(args.config))[0])
     #### NOTE: can initlize the logger manually
     # logger = gorilla.get_logger(log_file)
 
     # backup the necessary file and directory(Optional, details for source code)
-    backup_list = ["plain_train.py", "test.py", "sstnet", args.config]
-    backup_dir = os.path.join(log_dir, "backup")
+    backup_list = ["train.py", "test.py", "sstnet", args.config]
+    backup_dir = osp.join(log_dir, "backup")
     gorilla.backup(backup_dir, backup_list)
 
     # merge the paramters in args into cfg
