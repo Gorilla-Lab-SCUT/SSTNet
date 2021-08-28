@@ -76,7 +76,7 @@ Please refer to the `README.md` in `data/scannetv2` to realize data preparation.
 
 ## Training
 ```
-CUDA_VISIBLE_DEVICES=0 python plain_train.py --config config/default.yaml
+CUDA_VISIBLE_DEVICES=0 python train.py --config config/default.yaml
 ```
 You can start a tensorboard session by
 ```
