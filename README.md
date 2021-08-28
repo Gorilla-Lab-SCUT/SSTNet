@@ -3,6 +3,7 @@
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/instance-segmentation-in-3d-scenes-using/3d-instance-segmentation-on-scannetv2)](https://paperswithcode.com/sota/3d-instance-segmentation-on-scannetv2?p=instance-segmentation-in-3d-scenes-using)
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/instance-segmentation-in-3d-scenes-using/3d-instance-segmentation-on-s3dis)](https://paperswithcode.com/sota/3d-instance-segmentation-on-s3dis?p=instance-segmentation-in-3d-scenes-using)
 
+![overview](docs/overview.png)
 **Instance Segmentation in 3D Scenes using Semantic Superpoint Tree Networks(ICCV2021)**
 by Zhihao Liang, Zhihao Li, Songcen Xu, Mingkui Tan, Kui Jia*. (\*) Corresponding author.
 
