@@ -6,6 +6,7 @@
 ![overview](docs/overview.png)
 **Instance Segmentation in 3D Scenes using Semantic Superpoint Tree Networks(ICCV2021)**
 by Zhihao Liang, Zhihao Li, Songcen Xu, Mingkui Tan, Kui Jia*. (\*) Corresponding author.
+[[arxiv]](https://arxiv.org/abs/2108.07478)
 
 
 ## Introduction
