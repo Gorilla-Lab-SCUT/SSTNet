@@ -19,7 +19,11 @@ Instance segmentation in 3D scenes is fundamental in many applications of scene 
 * Pytorch 1.7.1
 * torchvision 0.8.2
 * CUDA 11.1  
-* requirements.txt
+
+then install the requirements:
+```sh
+pip install -r requirements.txt
+```
 
 ### SparseConv
 For the SparseConv, please refer [PointGroup's spconv](https://github.com/llijiang/spconv) to install.
@@ -112,7 +116,10 @@ This repo is built upon several repos, e.g., [PointGroup](https://github.com/dvl
 
 
 ## Contact
-If you have any questions or suggestions about this repo, please feel free to contact me (eezhihaoliang@mail.scut.edu.cn).
+If you have any questions or suggestions about this repo or paper, please feel free to contact me in issue or email (eezhihaoliang@mail.scut.edu.cn).
+
+## TODO
+- [ ] Distributed training(not verification)
 
 ## Citation
 If you find this work useful in your research, please cite:
