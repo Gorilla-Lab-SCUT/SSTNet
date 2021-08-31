@@ -110,7 +110,7 @@ Rank 1st on the ScanNet benchmark
 
 ## Pretrained
 We provide a pretrained model trained on ScanNet(v2) dataset.
-[[Google Drive]](https://drive.google.com/file/d/1UYT5QOjQQYB8QFzZi4cNyncCPNTSVDnu/view?usp=sharing) [[Baidu Cloud]](链接：https://pan.baidu.com/s/19tNxhwO5UkGn7C3E8asMsQ)(提取码：f3az)
+[[Google Drive]](https://drive.google.com/file/d/1UYT5QOjQQYB8QFzZi4cNyncCPNTSVDnu/view?usp=sharing) [[Baidu]](链接：https://pan.baidu.com/s/19tNxhwO5UkGn7C3E8asMsQ) (提取码：f3az)
 Its performance on ScanNet(v2) validation set is 49.4/64.9/74.4 in terms of mAP/mAP50/mAP25.
 
 ## Acknowledgement
