@@ -127,7 +127,6 @@ def do_train(model, cfg, logger):
 
             ret = model(input_,
                         p2v_map,
-                        feats,
                         coords_float,
                         epoch,
                         extra_data)

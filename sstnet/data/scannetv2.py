@@ -24,7 +24,7 @@ class ScanNetV2Inst(Dataset):
                  task: str="train",
                  with_elastic: bool=False,
                  test_mode: bool=False,
-                 with_superpoints: bool=True,
+                 prefetch_superpoints: bool=True,
                  **kwargs):
         # initialize dataset parameters
         self.logger = gorilla.derive_logger(__name__)
@@ -34,7 +34,7 @@ class ScanNetV2Inst(Dataset):
         self.max_npoint = max_npoint
         self.test_mode = test_mode
         self.with_elastic = with_elastic
-        self.with_superpoints = with_superpoints
+        self.prefetch_superpoints = prefetch_superpoints
         self.task = task
         self.aug_flag = "train" in self.task
         
@@ -45,26 +45,39 @@ class ScanNetV2Inst(Dataset):
         file_names = sorted(glob.glob(osp.join(self.data_root, self.task, "*.pth")))
         self.files = [torch.load(i) for i in gorilla.track(file_names)]
         self.logger.info(f"{self.task} samples: {len(self.files)}")
+        self.superpoints = []
+        for f in gorilla.track(self.files):    
+            if self.prefetch_superpoints:
+                scene = f[-1]
+                self.superpoints.append(self.get_superpoint(scene))
+            else:
+                self.superpoints.append([])
+
+    def get_superpoint(self, scene: str):
+        sub_dir = "scans_test" if "test" in self.task else "scans"
+        mesh_file = osp.join(osp.join(self.data_root, sub_dir, scene, scene+"_vh_clean_2.ply"))
+        mesh = o3d.io.read_triangle_mesh(mesh_file)
+        vertices = torch.from_numpy(np.array(mesh.vertices).astype(np.float32))
+        faces = torch.from_numpy(np.array(mesh.triangles).astype(np.int64))
+        superpoint = segmentator.segment_mesh(vertices, faces).numpy()
+        return superpoint
 
     def __len__(self):
         return len(self.files)
 
     def __getitem__(self, index: int) -> Tuple:
         if "test" in self.task:
-            sub_dir = "scans_test"
             xyz_origin, rgb, faces, scene = self.files[index]
             # construct fake label for label-lack testset
             semantic_label = np.zeros(xyz_origin.shape[0], dtype=np.int32)
             instance_label = np.zeros(xyz_origin.shape[0], dtype=np.int32)
         else:
-            sub_dir = "scans"
             xyz_origin, rgb, faces, semantic_label, instance_label, coords_shift, scene = self.files[index]
 
-        mesh_file = osp.join(osp.join(self.data_root, sub_dir, scene, scene+"_vh_clean_2.ply"))
-        mesh = o3d.io.read_triangle_mesh(mesh_file)
-        vertices = torch.from_numpy(np.array(mesh.vertices).astype(np.float32))
-        faces = torch.from_numpy(np.array(mesh.triangles).astype(np.int64))
-        superpoint = segmentator.segment_mesh(vertices, faces).numpy()
+        if self.prefetch_superpoints:
+            superpoint = self.superpoints[index]
+        else:
+            superpoint = self.get_superpoint(scene)
 
         ### jitter / flip x / rotation
         if self.aug_flag:

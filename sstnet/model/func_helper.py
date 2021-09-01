@@ -1,12 +1,11 @@
 # Copyright (c) Gorilla-Lab. All rights reserved.
-from copy import deepcopy
 from typing import Optional, List
 
 import torch
 import torch.nn.functional as F
 import numpy as np
 from scipy.sparse import coo_matrix
-from torch_scatter import scatter_mean, scatter_add
+from torch_scatter import scatter_add
 from treelib import Tree
 
 import htree
@@ -31,8 +30,7 @@ def build_hierarchical_tree(affinity: torch.Tensor,
                             centers: torch.Tensor,
                             affinity_count: torch.Tensor,
                             batch_idxs: torch.Tensor,
-                            soft_label: Optional[torch.Tensor]=None,
-                            mode="train"):
+                            soft_label: Optional[torch.Tensor]=None):
     r"""
     build the hierarchical tree
 
@@ -66,7 +64,6 @@ def build_hierarchical_tree(affinity: torch.Tensor,
         affinity_np = batch_affinity.detach().cpu().numpy()
         affinity_np = np.concatenate([affinity_np, batch_affinity_count[:, None].cpu().numpy()], axis=1) # [num_leaves, C+1]
         tree_connection = linkage(affinity_np, method="average", with_observation=True)
-        # tree_connection = linkage(affinity_np, method="average")
         tree_connection = tree_connection[:, :2].astype(np.int)
 
         # add leaf nodes
@@ -148,9 +145,21 @@ def get_fusion_property(properties: torch.Tensor,
                         leaves: torch.Tensor,
                         ids: torch.Tensor,
                         nodes_count: torch.Tensor) -> torch.Tensor:
+    r"""get the fused properties of fusion for nodes(HNIR)
+
+    Args:
+        properties (torch.Tensor, [N, C]): properties to be fused
+        count (torch.Tensor, [num_leaves]): points number of each leaf
+        leaves (torch.Tensor, [num_leaves]): leaf ids to label properties
+        ids (torch.Tensor, [num_leaves]): node ids of each leaf
+        nodes_count (torch.Tensor, [num_nodes]): points number of each node
+
+    Returns:
+        torch.Tensor: [description]
+    """
     num_leaves = leaves.shape[0]
-    properties = properties[leaves].view(num_leaves, -1) # [sum_leaves, C]
-    property_gain = properties * count[leaves].view(num_leaves, 1) # [sum_leaves, C]
+    properties = properties[leaves].view(num_leaves, -1) # [num_leaves, C]
+    property_gain = properties * count[leaves].view(num_leaves, 1) # [num_leaves, C]
     properties = scatter_add(property_gain, ids, dim=0) # [num_nodes, C]
     properties = properties / nodes_count.view(-1, 1) # [num_nodes, C]
     return properties
@@ -164,7 +173,9 @@ def align_superpoint_label(labels: torch.Tensor,
 
     Args:
         labels (torch.Tensor, [N]): semantic label of points
-        superpoint: (torch.Tensor, [N]): superpoint cluster id of points
+        superpoint (torch.Tensor, [N]): superpoint cluster id of points
+        num_label (int): number of valid label categories
+        ignore_label (int): the ignore label id
 
     Returns:
         label: (torch.Tensor, [num_superpoint]): superpoint's label
@@ -183,14 +194,15 @@ def align_superpoint_label(labels: torch.Tensor,
     return label, label_scores
 
 
-def refine_semantic_segmentation(semantic_preds: torch.Tensor,
+def voting_semantic_segmentation(semantic_preds: torch.Tensor,
                                  superpoint: torch.Tensor,
                                  num_semantic: int=20):
-    r"""refine semantic segmentation by superpoint
+    r"""get semantic segmentation by superpoint voting
 
     Args:
         semantic_preds (torch.Tensor, [N]): semantic label of points
-        superpoint: (torch.Tensor, [N]): superpoint cluster id of points
+        superpoint (torch.Tensor, [N]): superpoint cluster id of points
+        num_semantic (int): the number of semantic labels
 
     Returns:
         replace_semantic: (torch.Tensor, [N]): refine semantic label of points
@@ -261,8 +273,14 @@ def traversal_cluster(tree: Tree,
     return cluster_list, node_id_list, refine_labels
 
 
-def build_superpoint_graph(tree: Tree,
+def build_superpoint_clique(tree: Tree,
                            node_id_list: List[List[int]]):
+    r"""build the superpoint clique for refinement
+
+    Args:
+        tree (Tree): input sstnet
+        node_id_list (List[List[int]]): node ids of each proposal
+    """
     num_leaves = len(tree.leaves(tree.root))
     num_graph_nodes = num_leaves + len(node_id_list)
     # self connection

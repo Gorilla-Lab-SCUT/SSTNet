@@ -1,5 +1,6 @@
 # Copyright (c) Gorilla-Lab. All rights reserved.
 import functools
+from typing import Dict
 
 import spconv
 import torch
@@ -97,9 +98,6 @@ class SSTNet(nn.Module):
         )
         self.refine_gcn = gn.GCN([refine_channel, 128, 128, 1])
 
-        #### gcn score branch
-        # self.gcn_score_branch = GCN(channels=[m, 2*m, 4*m])
-
         #### score branch
         self.score_unet = g3n.UBlock([media, 2 * media], norm_fn, 2, block, indice_key_id=1)
         self.score_outputlayer = spconv.SparseSequential(
@@ -129,7 +127,7 @@ class SSTNet(nn.Module):
                     child.bias.requires_grad_(False)
 
     @staticmethod
-    def set_bn_init(m):
+    def set_bn_init(m: nn.Module):
         classname = m.__class__.__name__
         if classname.find("BatchNorm") != -1:
             try:
@@ -139,12 +137,22 @@ class SSTNet(nn.Module):
                 pass
 
 
-    def clusters_voxelization(self, clusters_idx, feats, coords, fullscale, scale, mode):
-        """
-        :param clusters_idx: [SumNPoint, 2], int, dim 0 for cluster_id, dim 1 for corresponding point idxs in N, cpu
-        :param feats: [N, C], float, cuda
-        :param coords: [N, 3], float, cuda
-        :return:
+    def clusters_voxelization(self,
+                              clusters_idx: torch.Tensor,
+                              feats: torch.Tensor,
+                              coords: torch.Tensor,
+                              fullscale: int,
+                              scale: int,
+                              mode: int):
+        r"""voxelize clusters(instance proposals)
+
+        Args:
+            clusters_idx (torch.Tensor, [sumNPoint, 2]): , int, dim 0 for cluster_id, dim 1 for corresponding point idxs in N, cpu
+            feats (torch.Tensor, [N, C]): features of points
+            coords (torch.Tensor, [N, 3]): coordinates of points
+            fullscale (int): the range of voxelization(for dynamic)
+            scale (int): the clamp of voxelization
+            mode (int): voxelization pooling mode
         """
         c_idxs = clusters_idx[:, 1].cuda()
         clusters_feats = feats[c_idxs.long()]
@@ -225,11 +233,10 @@ class SSTNet(nn.Module):
         
         semantic_scores = F.softmax(semantic_scores, dim=-1) # [N, 20]
         semantic_preds = semantic_scores.max(1)[1]  # [N], long
-        semantic_preds = refine_semantic_segmentation(semantic_preds, superpoint)
+        semantic_preds = voting_semantic_segmentation(semantic_preds, superpoint)
         
         # get point-wise affinity
         semantic_weight, shifted_weight = self.affinity_weight
-        # append_feaures = affinity # [N, C']
         affinity_origin = torch.cat([semantic_scores * semantic_weight, shifted * shifted_weight], dim=1) # [N, C']
         append_feaures = torch.cat([semantic_scores, shifted, coords], dim=1) # [N, C']
 
@@ -238,7 +245,7 @@ class SSTNet(nn.Module):
         
         # filter out according to semantic prediction labels
         filter_ids = torch.nonzero(semantic_preds > 1).view(-1)
-        _, superpoint = torch.unique(superpoint[filter_ids], return_inverse=True)
+        superpoint = torch.unique(superpoint[filter_ids], return_inverse=True)[1]
         coords = coords[filter_ids] # [N', 3]
         features = features[filter_ids] # [N', C]
         affinity = affinity_origin[filter_ids] # [N', C']
@@ -265,46 +272,46 @@ class SSTNet(nn.Module):
 
         superpoint_features = torch.cat([superpoint_features, superpoint_append_feaures], dim=1) # [num_superpoint, C + C']
 
-        # build the hierarchical tree
+        # bottom-up build the hierarchical tree
         hierarchical_tree_list, tree_list, fusion_features_list, fusion_labels_list, nodes_list = build_hierarchical_tree(
             superpoint_affinity,
             superpoint_features,
             superpoint_centers,
             superpoint_count,
             superpoint_batch_idxs,
-            superpoint_soft_inst_label,
-            mode=mode)
+            superpoint_soft_inst_label)
 
+        # construct batch idx
         batch_idx_list = []
         for batch_idx in torch.unique(batch_idxs):
             batch_idx_list.extend([batch_idx] * len(fusion_features_list[batch_idx]))
         batch_idxs = torch.Tensor(batch_idx_list).to(fusion_features_list[0].device) # [num_fusion]
         
+        # predict fusion scores(for split)
         scores_features = torch.cat(fusion_features_list) # [num_fusion, C]
         fusion_scores = self.fusion_linear(scores_features).squeeze() # [num_fusion]
         batch_idxs = torch.Tensor(batch_idx_list).to(fusion_scores.device) # [num_fusion]
         fusion_labels = torch.cat(fusion_labels_list)
         ret["fusion"] = (fusion_scores, fusion_labels)
         
+        # top-down traversal and split
         if self.with_refine or prepare_flag:
             proposals_idx_bias = 0
             proposals_idx_list = []
             refine_scores_list = []
             refine_labels_list = []
+            # loop batch
             for batch_idx in torch.unique(batch_idxs):
                 batch_idx = int(batch_idx)
-                hierarchical_tree = hierarchical_tree_list[batch_idx]
                 tree = tree_list[batch_idx]
                 nodes = nodes_list[batch_idx]
                 ids = (batch_idxs == batch_idx)
                 batch_fusion_scores = torch.sigmoid(fusion_scores[ids])
-                # # fusion gt
-                # batch_fusion_scores = fusion_labels[ids]
                 threshold = 0.5
                 batch_fusion_labels = (batch_fusion_scores[::2] > threshold) & (batch_fusion_scores[1::2] > threshold)
                 batch_fusion_labels = batch_fusion_labels.cpu().numpy().tolist()
                 node_ids = nodes.int().cpu().numpy().tolist()
-                
+                # traversal with splitting
                 batch_cluster_list, batch_node_ids, refine_labels = \
                     traversal_cluster(tree, node_ids, batch_fusion_labels)
 
@@ -312,7 +319,7 @@ class SSTNet(nn.Module):
                 ret["empty_flag"] = empty_flag
 
                 if self.with_refine and not empty_flag:
-                    batch_adjancy_matrix = build_superpoint_graph(tree, batch_node_ids)
+                    batch_adjancy_matrix = build_superpoint_clique(tree, batch_node_ids)
                     batch_adjancy_matrix = batch_adjancy_matrix.cuda()
                     num_leaves = len(tree.leaves(tree.root))
                     input_features = [tree.get_node(i).data.feature for i in range(num_leaves)]
@@ -361,21 +368,27 @@ class SSTNet(nn.Module):
                 proposals_offset = get_batch_offsets(proposals_idx[:, 0], proposals_idx[:, 0].max() + 1)
                 ret["proposals"] = proposals_idx, proposals_offset
 
-    def forward(self, input, input_map, feats, coords, epoch, extra_data=None, mode="train", semantic_only=False):
-        r"""
-        PointGroup forward
+    def forward(self,
+                input: spconv.SparseConvTensor,
+                input_map: torch.Tensor,
+                coords: torch.Tensor,
+                epoch: int,
+                extra_data: Optional[Dict]=None,
+                mode: str="train",
+                semantic_only: bool=False) -> Dict:
+        r"""SSTNet forward
 
         Args:
-            input (dict): input members
+            input (spconv.SparseConvTensor): input sparse tensor
             input_map (torch.Tensor, [N]): points to voxels indices
-            feats (torch.Tensor, [N, 3/6]): features(color + coordinates) of points
             coords (torch.Tensor, [N, 3]): coordinates of points
             epoch (int): epoch number
-            extra_data (dict): extra data dict
-            mode (str): 'train' or 'test'
-            semantic_only (bool): semantic only or not (for inference)
+            extra_data (Optional[Dict], optional): extra data dict. Defaults to None.
+            mode (str, optional): forward mode. Defaults to "train".
+            semantic_only (bool, optional): predict semantic results or not. Defaults to False.
+
         Returns:
-            ret (dict): forward result dict
+            Dict: prediction results
         """
         timer = gorilla.Timer()
         ret = {}
@@ -444,11 +457,15 @@ class SSTNet(nn.Module):
         return ret
 
 
-def get_batch_offsets(batch_idxs, bs):
-    """
-    :param batch_idxs: (N), int
-    :param bs: int
-    :return: batch_offsets: (bs + 1)
+def get_batch_offsets(batch_idxs: torch.Tensor, bs: int) -> torch.Tensor:
+    r"""get the offsets of batch ids
+
+    Args:
+        batch_idxs (torch.Tensor, [N]): batch ids
+        bs (int): number of batch size
+
+    Returns:
+        torch.Tensor, [bs + 1]: batch offsets
     """
     batch_idxs_np = batch_idxs.cpu().numpy()
     batch_offsets = np.append(np.searchsorted(batch_idxs_np, range(bs)), len(batch_idxs_np))
