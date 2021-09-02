@@ -10,6 +10,7 @@ import scipy.stats as stats
 import pointgroup_ops
 import gorilla
 import gorilla3d
+import gorilla3d.datasets as datasets
 import sstnet
 
 def get_parser():
@@ -294,12 +295,13 @@ def test(model, cfg, logger):
                     pass
                 # visual instance result
                 else:
-                    gorilla3d.visualize_instance_mask(clusters.cpu().numpy(),
-                                                      test_scene_name,
-                                                      cfg.data.visual,
-                                                      os.path.join(data_root, sub_dir),
-                                                      cluster_scores.cpu().numpy(),
-                                                      semantic_pred.cpu().numpy(),)
+                    datasets.visualize_instance_mask(
+                        clusters.cpu().numpy(),
+                        test_scene_name,
+                        cfg.data.visual,
+                        os.path.join(data_root, sub_dir),
+                        cluster_scores.cpu().numpy(),
+                        semantic_pred.cpu().numpy(),)
 
             ##### save files
             if (prepare_flag and cfg.data.save):
