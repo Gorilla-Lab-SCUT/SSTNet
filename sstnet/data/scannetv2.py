@@ -1,7 +1,9 @@
 # Copyright (c) Gorilla-Lab. All rights reserved.
+import os
+import time
 import math
 import glob
-import os.path as osp
+import multiprocessing as mp
 from typing import Dict, List, Sequence, Tuple, Union
 
 import gorilla
@@ -13,6 +15,24 @@ from torch.utils.data import Dataset
 import segmentator
 import pointgroup_ops
 from .utils import elastic
+
+
+class GetSuperpoint(mp.Process):
+    def __init__(self, path: str, scene: str, mdict: Dict):
+        # must call this before anything else
+        mp.Process.__init__(self)
+        self.path = path
+        self.scene = scene
+        self.mdict = mdict
+
+    def run(self):
+        mesh_file = os.path.join(os.path.join(self.path, self.scene, self.scene+"_vh_clean_2.ply"))
+        mesh = o3d.io.read_triangle_mesh(mesh_file)
+        vertices = torch.from_numpy(np.array(mesh.vertices).astype(np.float32))
+        faces = torch.from_numpy(np.array(mesh.triangles).astype(np.int64))
+        superpoint = segmentator.segment_mesh(vertices, faces).numpy()
+        self.mdict.update({self.scene: superpoint})        
+
 
 @gorilla.DATASETS.register_module(force=True)
 class ScanNetV2Inst(Dataset):
@@ -42,25 +62,47 @@ class ScanNetV2Inst(Dataset):
         self.load_files()
     
     def load_files(self):
-        file_names = sorted(glob.glob(osp.join(self.data_root, self.task, "*.pth")))
+        file_names = sorted(glob.glob(os.path.join(self.data_root, self.task, "*.pth")))
         self.files = [torch.load(i) for i in gorilla.track(file_names)]
         self.logger.info(f"{self.task} samples: {len(self.files)}")
-        self.superpoints = []
-        for f in gorilla.track(self.files):    
-            if self.prefetch_superpoints:
-                scene = f[-1]
-                self.superpoints.append(self.get_superpoint(scene))
-            else:
-                self.superpoints.append([])
+        self.superpoints = {}
+ 
+        if self.prefetch_superpoints:
+            self.logger.info("begin prefetch superpoints...")
+            sub_dir = "scans_test" if "test" in self.task else "scans"
+            path = os.path.join(self.data_root, sub_dir)
+            with gorilla.Timer("prefetch superpoints:"):
+                workers = []
+                mdict = mp.Manager().dict()
+                # multi-processing generate superpoints
+                for f in self.files:
+                    workers.append(GetSuperpoint(path, f[-1], mdict))
+                for worker in workers:
+                    worker.start()
+                # wait for multi-processing
+                while len(mdict) != len(self.files):
+                    time.sleep(0.1)
+                self.superpoints.update(mdict)
+
+        # # single processing (comparison)
+        # if self.prefetch_superpoints:
+        #     self.logger.info("prefetch superpoints:")
+        #     for f in gorilla.utils.track(self.files):
+        #         self.get_superpoint(f[-1])
+        # import ipdb; ipdb.set_trace()
+
 
     def get_superpoint(self, scene: str):
+        if scene in self.superpoints:
+            return
         sub_dir = "scans_test" if "test" in self.task else "scans"
-        mesh_file = osp.join(osp.join(self.data_root, sub_dir, scene, scene+"_vh_clean_2.ply"))
+        mesh_file = os.path.join(self.data_root, sub_dir, scene, scene+"_vh_clean_2.ply")
         mesh = o3d.io.read_triangle_mesh(mesh_file)
         vertices = torch.from_numpy(np.array(mesh.vertices).astype(np.float32))
         faces = torch.from_numpy(np.array(mesh.triangles).astype(np.int64))
         superpoint = segmentator.segment_mesh(vertices, faces).numpy()
-        return superpoint
+        self.superpoints[scene] = superpoint
+
 
     def __len__(self):
         return len(self.files)
@@ -74,10 +116,9 @@ class ScanNetV2Inst(Dataset):
         else:
             xyz_origin, rgb, faces, semantic_label, instance_label, coords_shift, scene = self.files[index]
 
-        if self.prefetch_superpoints:
-            superpoint = self.superpoints[index]
-        else:
-            superpoint = self.get_superpoint(scene)
+        if not self.prefetch_superpoints:
+            self.get_superpoint(scene)
+        superpoint = self.superpoints[scene]
 
         ### jitter / flip x / rotation
         if self.aug_flag:

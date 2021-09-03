@@ -123,7 +123,7 @@ If you have any questions or suggestions about this repo or paper, please feel f
 ## TODO
 - [ ] Distributed training(not verification)
 - [ ] Batch inference
-- [ ] Multi-processing for getting superpoints
+- [x] Multi-processing for getting superpoints
 
 ## Citation
 If you find this work useful in your research, please cite:
