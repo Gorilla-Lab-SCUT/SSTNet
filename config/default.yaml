@@ -32,7 +32,7 @@ dataset:
   max_npoint: 250000
   task: train
   with_elastic: False
-  prefetch_superpoints: True
+  prefetch_superpoints: False
 
 model:
   type: SSTNet

@@ -132,10 +132,9 @@ def test(model, cfg, logger):
         data_root = os.path.join(os.path.dirname(__file__), cfg.dataset.data_root)
         sub_dir = "scans_test" if "test" in cfg.dataset.task else "scans"
 
-        semantic_dataset_root = os.path.join(data_root, "scans")
-        instance_dataset_root = os.path.join(data_root, cfg.dataset.task + "_gt")
-        evaluator = gorilla3d.ScanNetSemanticEvaluator(semantic_dataset_root)
-        inst_evaluator = gorilla3d.ScanNetInstanceEvaluator(instance_dataset_root)
+        label_root = os.path.join(data_root, cfg.dataset.task + "_gt")
+        evaluator = gorilla3d.ScanNetSemanticEvaluator(label_root)
+        inst_evaluator = gorilla3d.ScanNetInstanceEvaluator(label_root)
 
         for i, batch in enumerate(test_dataloader):
             torch.cuda.empty_cache()
