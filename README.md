@@ -128,13 +128,12 @@ If you have any questions or suggestions about this repo or paper, please feel f
 ## Citation
 If you find this work useful in your research, please cite:
 ```
-@misc{liang2021instance,
-      title={Instance Segmentation in 3D Scenes using Semantic Superpoint Tree Networks}, 
-      author={Zhihao Liang and Zhihao Li and Songcen Xu and Mingkui Tan and Kui Jia},
-      year={2021},
-      eprint={2108.07478},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV}
+@inproceedings{liang2021instance,
+  title={Instance Segmentation in 3D Scenes using Semantic Superpoint Tree Networks},
+  author={Liang, Zhihao and Li, Zhihao and Xu, Songcen and Tan, Mingkui and Jia, Kui},
+  booktitle={Proceedings of the IEEE/CVF International Conference on Computer Vision},
+  pages={2783--2792},
+  year={2021}
 }
 ```
 
