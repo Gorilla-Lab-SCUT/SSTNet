@@ -4,9 +4,9 @@
 [![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/instance-segmentation-in-3d-scenes-using/3d-instance-segmentation-on-s3dis)](https://paperswithcode.com/sota/3d-instance-segmentation-on-s3dis?p=instance-segmentation-in-3d-scenes-using)
 
 ![overview](docs/overview.png)
-**Instance Segmentation in 3D Scenes using Semantic Superpoint Tree Networks(ICCV2021)**
-by Zhihao Liang, Zhihao Li, Songcen Xu, Mingkui Tan, Kui Jia*. (\*) Corresponding author.
+**Instance Segmentation in 3D Scenes using Semantic Superpoint Tree Networks(ICCV2021)** by [Zhihao Liang](https://lzhnb.github.io/), Zhihao Li, Songcen Xu, Mingkui Tan, [Kui Jia*](http://kuijia.site/). (\*) Corresponding author.
 [[arxiv]](https://arxiv.org/abs/2108.07478)
+[[ICCV2021]](https://openaccess.thecvf.com/content/ICCV2021/papers/Liang_Instance_Segmentation_in_3D_Scenes_Using_Semantic_Superpoint_Tree_Networks_ICCV_2021_paper.pdf)
 
 
 ## Introduction
